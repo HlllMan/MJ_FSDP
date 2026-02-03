@@ -1,0 +1,20 @@
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 虚拟环境 (防止误传好几个G的环境)
+venv/
+.venv/
+env/
+miniconda3/
+
+# 深度学习相关 (防止误传巨大的权重文件到 GitHub 导致报错)
+*.pt
+*.pth
+*.bin
+*.safetensors
+checkpoint/
+
+# 操作系统日志
+.DS_Store
