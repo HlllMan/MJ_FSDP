@@ -35,6 +35,7 @@ def main(total_epochs: int, batch_size: int):
         device_type = "cuda"
         
         tp_size = 2
+        dp_size = 8
         dp_size = _world_size // tp_size
         
         assert _world_size % tp_size == 0, f"World size {_world_size} must be divisible by TP size {tp_size}"
