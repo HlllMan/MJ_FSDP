@@ -34,6 +34,7 @@ def main(total_epochs: int, batch_size: int):
         # 当前容器中 torch 没有 torch.accelerator，直接固定用 CUDA
         device_type = "cuda"
         
+        # set tp and dp size explicitly
         tp_size = 2
         dp_size = 8
         dp_size = _world_size // tp_size
