@@ -19,10 +19,32 @@ from TP_parallel import (
 )
 from parallelize_module import parallelize_module
 
-def main(total_epochs: int, batch_size: int):
+def set_seed(seed=42):
+    import random
+    import numpy as np
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # 尽量保证“统计意义上可复现/接近”
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+
+def main(total_epochs: int):
+
+    # 在 main 函数入口调用
+    set_seed(42)
     _local_rank = int(os.environ["LOCAL_RANK"])
     _global_rank = int(os.environ["RANK"])
     _world_size = int(os.environ["WORLD_SIZE"])
+
+    # 保持全局 batch 不变：1卡 batch=256，8卡时每卡 batch=32
+    batch_size = int(32 * 8 / _world_size)
+    
     
     torch.cuda.set_device(_local_rank)
     
@@ -34,11 +56,14 @@ def main(total_epochs: int, batch_size: int):
         # 当前容器中 torch 没有 torch.accelerator，直接固定用 CUDA
         device_type = "cuda"
         
-        # set tp and dp size explicitly
-        tp_size = 2
-        dp_size = 8
+        # 1 卡：不做 TP/DP；多卡：默认 TP=2，其余作为 DP
+        if _world_size == 1:
+            tp_size = 1
+        else:
+            tp_size = 2
+
         dp_size = _world_size // tp_size
-        
+
         assert _world_size % tp_size == 0, f"World size {_world_size} must be divisible by TP size {tp_size}"
         
         device_mesh = init_device_mesh(
@@ -124,8 +149,8 @@ def main(total_epochs: int, batch_size: int):
                 # output: [batch, 5], targets: [batch, 5] - shape 完全匹配
                 loss = F.mse_loss(output, targets)
                 loss.backward()
+                # source 0.7797 targets 0.9832 output -0.0543 loss 0.2909
                 optimizer.step()
-                
                 # 输出 loss：每个节点的 local rank 0 打印，避免同节点重复
                 if _local_rank == 0 and batch_idx % 10 == 0:
                     print(f"[LocalRank {_local_rank}] Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item():.4f}")
@@ -137,4 +162,4 @@ def main(total_epochs: int, batch_size: int):
 
 
 if __name__ == "__main__":
-    main(total_epochs=10, batch_size=32)
+    main(total_epochs=10)
