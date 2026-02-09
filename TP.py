@@ -9,10 +9,8 @@ from torch.distributed.tensor import DTensor
 import time
 
 from DDP import DDP
-from MyTrainDataset import (
-    MyTrainDataset,
-    ToyModel,
-)
+from MyTrainDataset import MyTrainDataset
+from Model.model import ToyModel
 from torch.distributed.device_mesh import init_device_mesh
 from TP_parallel import (
     ColwiseParallel,
