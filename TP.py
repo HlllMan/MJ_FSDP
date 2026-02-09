@@ -6,6 +6,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.distributed.tensor import DTensor
+import time
 
 from DDP import DDP
 from MyTrainDataset import (
@@ -42,8 +43,9 @@ def main(total_epochs: int):
     _global_rank = int(os.environ["RANK"])
     _world_size = int(os.environ["WORLD_SIZE"])
 
-    # 保持全局 batch 不变：1卡 batch=256，8卡时每卡 batch=32
-    batch_size = int(32 * 8 / _world_size)
+    # 每卡 batch 固定 256，避免多卡时 batch 过小导致 all-reduce 次数过多、通信占主导
+    # 1 卡: 256/epoch; 8 卡: 每卡 256，global=2048，batch 数减少 8 倍 → all-reduce 次数减少
+    batch_size = 256
     
     
     torch.cuda.set_device(_local_rank)
@@ -97,7 +99,7 @@ def main(total_epochs: int):
         # 确保模型处于训练模式
         model.train()
         
-        dataset = MyTrainDataset(2048)
+        dataset = MyTrainDataset(204800)
         # 使用 dp_mesh 的 size  and rank 配置 sampler
         train_data = DataLoader(
             dataset,
@@ -122,6 +124,10 @@ def main(total_epochs: int):
         elif _global_rank == 8:
             print(f"[Rank {_global_rank}] Worker 节点已就绪，开始训练")
         
+        torch.cuda.synchronize()
+        t0 = time.perf_counter()
+
+
         for epoch in range(total_epochs):
             train_data.sampler.set_epoch(epoch)
             
@@ -152,9 +158,16 @@ def main(total_epochs: int):
                 # source 0.7797 targets 0.9832 output -0.0543 loss 0.2909
                 optimizer.step()
                 # 输出 loss：每个节点的 local rank 0 打印，避免同节点重复
-                if _local_rank == 0 and batch_idx % 10 == 0:
+                if _local_rank == 0 and batch_idx  == 0:
                     print(f"[LocalRank {_local_rank}] Epoch {epoch}, Batch {batch_idx}, Loss: {loss.item():.4f}")
     
+        torch.cuda.synchronize()
+        t1 = time.perf_counter()
+
+        if _global_rank ==0 :
+            total = t1 - t0
+            print(f"total time: {total}sec ")
+
     finally:
         # 确保无论是否发生异常都清理进程组
         if dist.is_initialized():
