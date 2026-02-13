@@ -230,6 +230,7 @@ class Transformer(nn.Module):
         )
 
         self.layers = torch.nn.ModuleDict()
+        self.layers["0"] = TransformerBlock(model_args)
         self.output = nn.Linear(model_args.dim, model_args.output_dim)
 
 
@@ -241,11 +242,11 @@ class Transformer(nn.Module):
 
     def forward(
         self,
-        tokens: torch.Tensor
+        x: torch.Tensor
     ):
 
-    tokens = self.layers.values()(
-        tokens, self.freqs_cis
-    )
-
+        h = self.layers["0"](x, self.freqs_cis)
+        h_pool = h[:, -1, :]  
+        output = self.output(h_pool)   
+        return output
     

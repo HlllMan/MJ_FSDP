@@ -8,9 +8,10 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.distributed.tensor import DTensor
 import time
 
-from DDP import DDP
+# from DDP import DDP
 from MyTrainDataset import MyTrainDataset
-from Model.model import ToyModel
+from Model.model import Transformer
+from Model.args import TransformerModelArgs
 from torch.distributed.device_mesh import init_device_mesh
 from TP_parallel import (
     ColwiseParallel,
@@ -60,7 +61,7 @@ def main(total_epochs: int):
         if _world_size == 1:
             tp_size = 1
         else:
-            tp_size = 2
+            tp_size = 1
 
         dp_size = _world_size // tp_size
 
@@ -77,18 +78,21 @@ def main(total_epochs: int):
         
         dp_rank = dp_mesh.get_local_rank()
         
-        model = ToyModel().to(device_type)
+        model = Transformer(TransformerModelArgs()).to(device_type)
         
-        model = parallelize_module(
-            module=model,
-            device_mesh=tp_mesh,
-            parallelize_plan={
-                "in_proj": ColwiseParallel(),
-                "out_proj": RowwiseParallel(),
-            },
-        )
+        # model = parallelize_module(
+        #     module=model,
+        #     device_mesh=tp_mesh,
+        #     parallelize_plan={
+        #         "in_proj": ColwiseParallel(),
+        #         "out_proj": RowwiseParallel(),
+        #     },
+        # )
         
         # 使用自定义简化版 DDP：仅在 DP 维度上同步梯度
+
+        from torch.nn.parallel import DistributedDataParallel as DDP
+
         model = DDP(
             model,
             process_group=dp_mesh.get_group(),  # 只在 DP 维度上同步
@@ -111,7 +115,7 @@ def main(total_epochs: int):
             )
         )
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=0.25, foreach=True)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, foreach=True)
         # 确保所有进程都完成初始化后再开始训练
         # 重要：需要全局 barrier，不只是 DP 组内的 barrier
         dist.barrier()
