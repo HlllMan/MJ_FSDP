@@ -8,7 +8,7 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.distributed.tensor import DTensor
 import time
 
-# from DDP import DDP
+from DDP import DDP
 from MyTrainDataset import MyTrainDataset
 from Model.model import Transformer
 from Model.args import TransformerModelArgs
@@ -91,7 +91,7 @@ def main(total_epochs: int):
         
         # 使用自定义简化版 DDP：仅在 DP 维度上同步梯度
 
-        from torch.nn.parallel import DistributedDataParallel as DDP
+        # from torch.nn.parallel import DistributedDataParallel as DDP
 
         model = DDP(
             model,

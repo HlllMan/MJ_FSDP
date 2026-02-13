@@ -56,17 +56,15 @@ class DDP(nn.Module):
         - 只同步参数，不处理 buffers
         - 使用 DP 组内 rank 0 作为源，但需要先转换成全局 rank
         """
-        params_list = []
+        src_global_rank = get_global_rank(self.process_group, 0)
         for name, param in self.module.named_parameters():
             if not isinstance(param, torch.Tensor):
                 continue
-            params_list.append((name, param))
-        
-        # DP 组内 src rank（组内 rank0），转换成全局 rank
-        src_global_rank = get_global_rank(self.process_group, 0)
-
-        for name, param in params_list:
-            dist.broadcast(param, src=src_global_rank, group=self.process_group)
+            with torch.no_grad():
+                # 先广播到临时副本，再写回 param
+                buf = param.detach().clone()
+                dist.broadcast(buf, src=src_global_rank, group=self.process_group)
+                param.data.copy_(buf)
 
     def _build_reducer(self) -> None:
         """
