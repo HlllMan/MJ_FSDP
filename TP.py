@@ -61,7 +61,7 @@ def main(total_epochs: int):
         if _world_size == 1:
             tp_size = 1
         else:
-            tp_size = 1
+            tp_size = 2
 
         dp_size = _world_size // tp_size
 
@@ -80,14 +80,28 @@ def main(total_epochs: int):
         
         model = Transformer(TransformerModelArgs()).to(device_type)
         
-        # model = parallelize_module(
-        #     module=model,
-        #     device_mesh=tp_mesh,
-        #     parallelize_plan={
-        #         "in_proj": ColwiseParallel(),
-        #         "out_proj": RowwiseParallel(),
-        #     },
-        # )
+        if tp_size > 1:
+
+            parallelize_module(
+                module=model.layers["0"],
+                device_mesh=tp_mesh,
+                parallelize_plan={
+                    "attention.wq": ColwiseParallel(),
+                    "attention.wk": ColwiseParallel(),
+                    "attention.wv": ColwiseParallel(),
+                    "attention.wo": RowwiseParallel(),
+                    "feed_forward.in_proj": ColwiseParallel(),
+                    "feed_forward.out_proj": RowwiseParallel(),
+                },
+            )
+
+            parallelize_module(
+                module=model,
+                device_mesh=tp_mesh,
+                parallelize_plan={
+                    "output": ColwiseParallel(gather_output=True)
+                }
+            )
         
         # 使用自定义简化版 DDP：仅在 DP 维度上同步梯度
 

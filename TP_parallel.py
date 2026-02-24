@@ -4,6 +4,8 @@ from torch.distributed.tensor.parallel import ParallelStyle
 from functools import partial
 from torch.distributed.device_mesh import DeviceMesh
 
+
+
 # 标准导入 DTensor API（PyTorch 2.2+）
 from torch.distributed.tensor import (
     distribute_tensor,
@@ -15,17 +17,26 @@ from torch.distributed.tensor import (
 
 
 class ColwiseParallel(ParallelStyle):
-    def __init__(self):
+    def __init__(self, gather_output: bool = False):
         super().__init__()
         self.input_layouts = (Replicate(),)
         self.output_layouts = (Shard(-1),)
         self.desired_input_layouts = (Replicate(),)
         self.use_local_output = True
         self.src_data_rank = 0
+        if gather_output:
+            self.output_layouts = (Replicate(),)
+            self.use_local_output = False
 
     @staticmethod
     def _prepare_input_fn(input_layouts, desired_input_layouts, mod, inputs, device_mesh):
         input_tensor = inputs[0]
+        if isinstance(input_tensor, DTensor):
+            if input_tensor.placements != desired_input_layouts:
+                input_tensor = input_tensor.redistribute(
+                    placements=desired_input_layouts, async_op=True
+                )
+            return input_tensor
         input_tensor = DTensor.from_local(
             input_tensor, device_mesh, input_layouts, run_check=False
         )
@@ -96,16 +107,6 @@ class RowwiseParallel(ParallelStyle):
                     module.weight,
                     device_mesh,
                     [Shard(1)],
-                )
-            ),
-        )
-        module.register_parameter(
-            "bias",
-            nn.Parameter(
-                distribute_tensor(
-                    module.bias,
-                    device_mesh,
-                    [Replicate()],
                 )
             ),
         )

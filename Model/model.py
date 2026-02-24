@@ -207,7 +207,16 @@ class TransformerBlock(nn.Module):
         x: torch.Tensor,
         freqs_cis: torch.Tensor,
     ):
-        h = x + self.attention(x, freqs_cis)
+        attn_out = self.attention(x, freqs_cis)
+        # 统一类型，避免 mixed Tensor + DTensor
+        from torch.distributed.tensor import DTensor
+        if isinstance(attn_out, DTensor) and not isinstance(x, DTensor):
+            mesh = attn_out._spec.mesh
+            x = DTensor.from_local(x, mesh, attn_out.placements, run_check=False)
+        elif isinstance(x, DTensor) and not isinstance(attn_out, DTensor):
+            mesh = x._spec.mesh
+            attn_out = DTensor.from_local(attn_out, mesh, x.placements, run_check=False)
+        h = x + attn_out
         out = h + self.feed_forward(h)
         return out
 

@@ -2,13 +2,13 @@ import torch.nn as nn
 from torch.distributed.device_mesh import DeviceMesh
 from torch.distributed.tensor.parallel.style import ParallelStyle
 
+from fnmatch import fnmatch
+
 
 def parallelize_module(
     module: nn.Module,
     device_mesh: DeviceMesh,
     parallelize_plan: dict[str, ParallelStyle],
-    *,
-    src_data_rank: int = 0,
 ) -> nn.Module:
     """
     parallelize_module，只保留 MVP 需要的功能。
@@ -27,20 +27,20 @@ def parallelize_module(
     Returns:
         并行化后的模块（原地修改，返回原模块引用）
     """
-    for module_name, parallelize_style in parallelize_plan.items():
-        # 设置 src_data_rank
-        parallelize_style.src_data_rank = src_data_rank
+    for module_path, parallelize_style in parallelize_plan.items():
         
-        # 查找子模块（只支持直接子模块，不支持嵌套路径）
-        # 对应原版 api.py 第99-105行：使用 module.named_children() 查找子模块
-        # 原版使用 fnmatch 支持通配符，我们简化为精确匹配
-        submodule = None
-        for name, submod in module.named_children():
-            if name == module_name:
-                submodule = submod
-                break
-        
-        # 应用并行化风格
-        parallelize_style._apply(submodule, device_mesh)
+        path_splits = module_path.split(".")
+
+        while path_splits:
+            atom = path_splits.pop(0)
+            matched_children = filter(
+                lambda t: fnmatch(t[0], atom), module.named_children()
+            )
+            for _, submodule in matched_children:
+                if path_splits:
+                    leaf_path = ".".join(path_splits)
+                    parallelize_module(submodule, device_mesh, {leaf_path: parallelize_style})
+                else:
+                    parallelize_style._apply(submodule, device_mesh)
     
     return module
