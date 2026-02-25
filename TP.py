@@ -13,6 +13,8 @@ from MyTrainDataset import MyTrainDataset
 from Model.model import Transformer
 from Model.args import TransformerModelArgs
 from torch.distributed.device_mesh import init_device_mesh
+
+from infra.FSDP import apply_fsdp
 from TP_parallel import (
     ColwiseParallel,
     RowwiseParallel,
@@ -107,10 +109,12 @@ def main(total_epochs: int):
 
         # from torch.nn.parallel import DistributedDataParallel as DDP
 
-        model = DDP(
-            model,
-            process_group=dp_mesh.get_group(),  # 只在 DP 维度上同步
-        )
+        # model = DDP(
+        #     model,
+        #     process_group=dp_mesh.get_group(),  # 只在 DP 维度上同步
+        # )
+
+        apply_fsdp(model, dp_mesh)
         
         # 确保模型处于训练模式
         model.train()
